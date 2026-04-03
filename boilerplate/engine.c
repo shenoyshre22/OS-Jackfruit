@@ -19,7 +19,7 @@ typedef struct {
 int container_main(void *arg) {
     config_t *cfg = (config_t *)arg;
 
-    printf("inside container!\n");
+    printf("inside container\n");
 
     pid_t pid = fork();
 
@@ -29,6 +29,8 @@ int container_main(void *arg) {
     }
 
     if (pid == 0) {
+        // This becomes PID 1 inside container
+
         if (chroot(cfg->rootfs) != 0) {
             perror("chroot failed");
             return 1;
