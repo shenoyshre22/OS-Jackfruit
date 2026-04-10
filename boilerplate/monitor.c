@@ -337,6 +337,7 @@ static int __init monitor_init(void)
 /* --- Provided: Module Exit --- */
 static void __exit monitor_exit(void)
 {
+    struct monitored_entry *entry, *
     del_timer_sync(&monitor_timer);
 
     /* ==============================================================
@@ -347,6 +348,14 @@ static void __exit monitor_exit(void)
      *   - leave no leaked state on module unload
      * ============================================================== */
 
+    list_for_each_entry_safe(entry, tmp, &monitored_list, list) {
+        printk(KERN_INFO
+               "[container_monitor] Freeing entry container=%s on unload\n",
+               entry->container_id);
+        list_del(&entry->list);
+        kfree(entry);
+    }
+    
     cdev_del(&c_dev);
     device_destroy(cl, dev_num);
     class_destroy(cl);
