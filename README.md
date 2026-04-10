@@ -8,8 +8,8 @@ A lightweight Linux container runtime in C with a long-running supervisor proces
 
 | Name | SRN |
 |------|-----|
-| [Your Name Here] | [Your SRN Here] |
-| [Partner Name Here] | [Partner SRN Here] |
+| Shreya Patil | PES2UG24CS484 |
+| Shreya Shenoy | PES2UG24CS487 |
 
 ---
 
@@ -17,7 +17,8 @@ A lightweight Linux container runtime in C with a long-running supervisor proces
 
 ### Prerequisites
 
-You need an **Ubuntu 22.04 or 24.04 VM** with Secure Boot OFF. WSL will not work.
+- Ubuntu 22.04 or 24.04 VM
+- Compiler and libraries required to run C programs (Linux libraries used)
 
 ```bash
 sudo apt update
@@ -233,29 +234,29 @@ make clean
 
 ### 4.1 Isolation Mechanisms
 
-Linux namespaces are the kernel mechanism that makes containers possible. Our runtime uses `clone()` with three namespace flags: `CLONE_NEWPID` gives each container its own PID namespace so the first process inside sees itself as PID 1, completely unaware of host processes. `CLONE_NEWUTS` gives each container its own hostname, which we set to `ctr-<id>`. `CLONE_NEWNS` gives each container its own mount namespace so mounts made inside (like `/proc`) do not leak to the host.
+Linux namespaces are the kernel mechanism that helps make containers. Our runtime uses clone() with three namespace flags: 1. CLONE_NEWPID which gives every container its own PID namespace so the first process inside sees itself as PID 1, not aware of host processes. 2. CLONE_NEWUTS gives every container its own hostname. 3. CLONE_NEWNS gives every container its own mount namespace so mounts made inside (eg: `/proc`) do not leak to the host.
 
-`chroot()` restricts the container's view of the filesystem to its assigned rootfs directory. Once `chroot(rootfs-alpha)` is called, the container cannot access anything outside that directory tree. We then call `chdir("/")` so the working directory is also inside the new root, preventing escape via relative paths.
+chroot() - this restricts the container's view of the filesystem to its assigned rootfs directory. Once chroot(rootfs-alpha) is called, the container cannot access anything outside that directory tree. We then call chdir("/") so the working directory is also inside the new root, preventing escaping out via other relative paths.
 
-The host kernel is still entirely shared. All containers share the same kernel, the same system call interface, the same network stack (we do not use `CLONE_NEWNET`), and the same physical CPU and memory. This is what makes containers lightweight compared to VMs — there is no guest kernel. It also means a kernel exploit inside a container could affect the host, which is why production runtimes add seccomp filters and capability restrictions that our project does not implement.
+The host kernel is shared. All containers share the same kernel, same system call interface, the same network, and same CPU and memory. This makes containers lightweight compared to VMs. There is no guest kernel.
 
 ### 4.2 Supervisor and Process Lifecycle
 
-A long-running supervisor is useful because containers need a parent process that outlives them. When a process exits, its process table entry (the "zombie") stays until its parent calls `wait()` or `waitpid()`. If the supervisor exited after launching a container, the container would be re-parented to `init` (PID 1), losing our ability to track its exit status and metadata.
+A long running supervisor is useful because containers need a parent process that lives longer than them. When a process exits, its process table entry (eg: "zombie") stays there until its parent calls wait() or waitpid(). If the supervisor exited after launching a container, the container would be re-parented to init (meaning PID=1), making us unable to track its exit status and metadata.
 
-Our supervisor calls `clone()` to create each container child. After `clone()` returns in the parent, the child's PID is stored in `container_record_t`. When the child exits, the kernel sends `SIGCHLD` to the supervisor. Our `sigchld_handler` calls `waitpid(-1, &status, WNOHANG)` in a loop to reap all exited children at once, extracting their exit code or terminating signal and updating the metadata record. The `WNOHANG` flag is critical — it prevents `waitpid` from blocking if not all children have exited yet.
+Our supervisor calls clone() to create each container child. After clone() returns in the parent, the child's PID is stored in container_record_t. When the child exits, the kernel sends SIGCHLD to the supervisor.sigchld_handler calls waitpid in a loop to reap all exited children at once, extracting their exit code or terminating signal and updating the metadata record. The `WNOHANG` flag in waitpid loop prevents it (waitpid) from blocking if not all children have exited yet.
 
-The metadata record tracks the full container lifecycle: `STARTING → RUNNING → STOPPED/KILLED/EXITED`. The `stop_requested` flag distinguishes a manual stop (supervisor sent SIGTERM) from a hard-limit kill (kernel module sent SIGKILL independently), so `ps` output is accurate.
+The metadata record tracks the full container lifecycle: STARTING -> RUNNING -> STOPPED/KILLED/EXITED. The stop_requested flag distinguishes a manual stop from a hard limit kill, so ps output is accurate.
 
 ### 4.3 IPC, Threads, and Synchronisation
 
-Our project uses two separate IPC mechanisms as required:
+This project uses two separate IPC mechanisms as required:
 
-**Path A — Logging (pipes):** Each container's stdout and stderr are connected to the write-end of a pipe via `dup2()`. The supervisor holds the read-end. A dedicated pipe-reader thread per container reads chunks from the pipe and pushes them into the bounded buffer. The bounded buffer sits between these producer threads and a single consumer (the logger thread), which pops chunks and appends them to per-container log files.
+**Logging (pipes):** Each container's stdout and stderr are connected to the write-end of a pipe via `dup2()`. The supervisor holds the read-end. A dedicated pipe-reader thread per container reads chunks from the pipe and pushes them into the bounded buffer. The bounded buffer sits between these producer threads and a single consumer (the logger thread), which pops chunks and appends them to per-container log files.
 
 The bounded buffer uses a `pthread_mutex_t` to protect the head, tail, and count fields. Without it, two producer threads could both read `count = 15` (one slot free), both decide to push, and corrupt the buffer by writing to the same slot. We use two `pthread_cond_t` variables: `not_full` (producers wait here when the buffer is full) and `not_empty` (the consumer waits here when the buffer is empty). `pthread_cond_wait` atomically releases the mutex and sleeps, which eliminates the race between checking the condition and sleeping.
 
-**Path B — Control (UNIX domain socket):** CLI clients connect to `/tmp/mini_runtime.sock`, send a fixed-size `control_request_t` struct, and receive a fixed-size `control_response_t` struct back. The `metadata_lock` mutex protects the container linked list accessed from both the socket handler (main thread) and the SIGCHLD handler.
+**Control (UNIX domain socket):** CLI clients connect to `/tmp/mini_runtime.sock`, send a fixed-size `control_request_t` struct, and receive a fixed-size `control_response_t` struct back. The `metadata_lock` mutex protects the container linked list accessed from both the socket handler (main thread) and the SIGCHLD handler.
 
 The reason we use a mutex for the list and not a spinlock is that the ioctl and socket handler paths can sleep (they call `malloc`, `send`, `recv`). Spinlocks must never sleep — they busy-wait and are only appropriate for very short critical sections in interrupt context.
 
