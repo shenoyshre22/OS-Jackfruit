@@ -25,15 +25,18 @@ sudo apt update
 sudo apt install -y build-essential linux-headers-$(uname -r)
 ```
 
-### Step 1 — Clone and build
+### Step 1 — Cloning and building
 
 ```bash
 git clone https://github.com/<your-username>/OS-Jackfruit.git
 cd OS-Jackfruit/boilerplate
 make
 ```
+this gives us something like 
+![check](results/checking_make_compiled.png)
 
-### Step 2 — Prepare the root filesystem
+
+### Step 2 — Preparing the root filesystem
 
 ```bash
 mkdir rootfs-base
@@ -51,27 +54,27 @@ cp io_pulse   rootfs-alpha/
 cp io_pulse   rootfs-beta/
 ```
 
-### Step 3 — Load the kernel module
+### Step 3 — Loading the kernel module
 
 ```bash
 sudo insmod monitor.ko
 ls -l /dev/container_monitor
 ```
 
-### Step 4 — Start the supervisor (Terminal 1 — keep running)
+### Step 4 — Starting the supervisor (in Terminal 1 which keep running)
 
 ```bash
 sudo ./engine supervisor ./rootfs-base
 ```
 
-You should see:
+we see:
 ```
 [supervisor] Starting. Base rootfs: ./rootfs-base
 [supervisor] Kernel monitor opened.
 [supervisor] Listening on /tmp/mini_runtime.sock
 ```
 
-### Step 5 — Use the CLI (Terminal 2)
+### Step 5 — Using the CLI (Terminal 2)
 
 ```bash
 # Start two containers
@@ -88,7 +91,7 @@ sudo ./engine logs alpha
 sudo ./engine stop alpha
 ```
 
-> **Note on container IDs:** Each container ID must be unique per supervisor session. In our demo we used alpha, alpha2, alpha3, alpha4, and beta across multiple experiments. Once a container has been registered (even if it has exited), the supervisor retains its metadata record for that session. This is why subsequent experiments used new IDs (alpha2 for soft-limit test, alpha3 for hard-limit test, alpha4 for scheduling) — reusing an ID returns `ERROR: could not start` because the name is already tracked. This is correct behaviour: it prevents accidentally launching two containers with the same identity.
+> **Note on container IDs:** Each container ID must be unique per supervisor session. In our demo we used alpha, alpha2, alpha3, alpha4, and beta across multiple experiments. Once a container has been registered (even if it has exited), the supervisor retains its metadata record for that session. This is why subsequent experiments used new IDs (alpha2 for soft-limit test, alpha3 for hard-limit test, alpha4 for scheduling) because while try to reuse an ID returned `ERROR: could not start` because the name is already tracked. This is correct behaviour and it happened because this helps prevent accidentally launching two containers with the same identity. hence the multiple containers
 
 ### Step 6 — Memory limit tests
 
@@ -124,7 +127,7 @@ sudo ./engine ps
 ps aux | grep -E "Z|engine|cpu_hog"
 
 # In Terminal 1 — press Ctrl+C to stop supervisor
-# You will see: [supervisor] Shutting down... [supervisor] Exited cleanly.
+# we see: [supervisor] Shutting down... [supervisor] Exited cleanly.
 
 # Unload the kernel module
 sudo rmmod monitor
@@ -140,7 +143,7 @@ make clean
 
 ### Screenshot 1 — Environment preflight check
 
-![Screenshot 1](screenshots/s0.png)
+![Screenshot 1](results/s0.png)
 
 *The environment check script confirms Ubuntu 22.04, no WSL, kernel headers present, boilerplate build succeeds, kernel module loads and unloads correctly. All checks pass — preflight passed.*
 
@@ -148,7 +151,7 @@ make clean
 
 ### Screenshot 2 — Kernel module loaded
 
-![Screenshot 2](screenshots/s1.png)
+![Screenshot 2](results/s1.png)
 
 *`dmesg` shows `[container_monitor] Module loaded. Device: /dev/container_monitor`. The `ls -l` output confirms the character device was created at `/dev/container_monitor` with correct permissions. The AppArmor DENIED lines are from Firefox running in the background and are unrelated to this project.*
 
@@ -156,7 +159,7 @@ make clean
 
 ### Screenshot 3 — Multi-container supervision
 
-![Screenshot 3](screenshots/s2.png)
+![Screenshot 3](results/s2.png)
 
 *The supervisor process starts, opens the kernel monitor, and begins listening on `/tmp/mini_runtime.sock`. It then accepts a `start alpha` request from the CLI and launches the container with `pid=5794`. The supervisor remains alive and running — it does not exit after launching the container.*
 
@@ -164,7 +167,7 @@ make clean
 
 ### Screenshot 4 — Metadata tracking (ps output)
 
-![Screenshot 4](screenshots/s3.png)
+![Screenshot 4](results/s3.png)
 
 *Output of `engine ps` after starting container alpha with cpu_hog. Shows all tracked metadata columns: container ID, host PID (5794), start timestamp, current state (exited after cpu_hog completed its 10-second run), soft and hard memory limits in MiB, and exit code (0 = clean exit). The `OK: container 'alpha' started` line above confirms the CLI successfully communicated with the supervisor over the UNIX domain socket.*
 
@@ -172,7 +175,7 @@ make clean
 
 ### Screenshot 5 — Bounded-buffer logging
 
-![Screenshot 5](screenshots/s4.png)
+![Screenshot 5](results/s4.png)
 
 *Output of `engine logs alpha` showing the per-container log file captured through the bounded-buffer logging pipeline. Each line is timestamped with the wall-clock time it was received by the supervisor's producer thread. The cpu_hog workload prints its accumulator value every second — all 10 seconds of output are present with no dropped lines, confirming the producer-consumer pipeline correctly captured all container stdout without loss. The log appears twice because both stdout and stderr pipes were read by separate producer threads into the same log buffer.*
 
@@ -180,7 +183,7 @@ make clean
 
 ### Screenshot 6 — CLI and IPC
 
-![Screenshot 6](screenshots/s5.png)
+![Screenshot 6](results/s5.png)
 
 *The CLI sends `engine stop alpha` over the UNIX domain socket at `/tmp/mini_runtime.sock`. The supervisor returns `ERROR: cannot stop alpha` because alpha had already exited on its own (cpu_hog finishes in 10 seconds). The subsequent `engine ps` confirms the state is `exited` with exit code 0. This demonstrates correct IPC: the CLI connected to the supervisor, the supervisor looked up the container, determined it was not in a stoppable state, and returned an appropriate error response.*
 
@@ -188,7 +191,7 @@ make clean
 
 ### Screenshot 7 — Soft-limit warning
 
-![Screenshot 7](screenshots/s6.png)
+![Screenshot 7](results/s6.png)
 
 *Container alpha2 was started with `--soft-mib 10 --hard-mib 50`. The `dmesg` output shows the kernel module detected RSS exceeding the soft limit (`rss=17432576`, limit=`10485760` bytes = 10 MiB) and emitted a SOFT LIMIT warning for `container=alpha2 pid=6160`. Shortly after, RSS crossed the hard limit (`rss=59375616`, limit=`52428800` bytes = 50 MiB) and the module sent SIGKILL. The soft warning fires exactly once per container entry as required.*
 
@@ -196,7 +199,7 @@ make clean
 
 ### Screenshot 8 — Hard-limit enforcement
 
-![Screenshot 8](screenshots/s7.png)
+![Screenshot 8](results/s7.png)
 
 *Container alpha3 was started with very tight limits (`--soft-mib 5 --hard-mib 8`). The `dmesg` output shows `HARD LIMIT container=alpha3 pid=6296 rss=9043968 limit=8388608` — the kernel module sent SIGKILL when RSS exceeded 8 MiB. The `engine ps` output at the bottom shows alpha2 and alpha3 both in `hard_limit_killed` state with exit code 137 (128 + SIGKILL=9), correctly distinguished from the normal `exited` state of alpha. This confirms the supervisor's `stop_requested` flag correctly classifies termination reason.*
 
@@ -204,8 +207,9 @@ make clean
 
 ### Screenshot 9 — Scheduling experiment
 
-![Screenshot 9](screenshots/s8.png)
-![Screenshot 9b — PIDs](screenshots/s8_pid.png)
+![Screenshot 9](results/s8.png)
+
+![Screenshot 9b — PIDs](resultss8_pid.png)
 
 *Two cpu_hog containers (alpha4 and beta) were started simultaneously with equal memory limits. The `top` output shows the CPU distribution across all processes. The renice errors confirm the containers had already exited by the time renice was attempted — cpu_hog completes in 10 seconds. The `top` snapshot shows system CPU utilisation during the experiment period. Both containers ran under the CFS scheduler; with equal nice values they received approximately equal CPU shares, as shown by the near-zero idle percentage during their execution window.*
 
@@ -213,7 +217,7 @@ make clean
 
 ### Screenshot 10 — Clean teardown
 
-![Screenshot 10](screenshots/s9.png)
+![Screenshot 10](results/s9.png)
 
 *`ps aux` filtered for engine and cpu_hog shows the supervisor processes (PIDs 5734, 5735, 5736) still running, and `engine ps` shows all containers in their final states (exited or hard_limit_killed) with no zombie (Z) processes anywhere. All producer and consumer threads have joined cleanly since all containers have exited. The `sudo kill` command is then used to stop the supervisor.*
 
@@ -221,7 +225,7 @@ make clean
 
 ### Screenshot 11 — Supervisor exits cleanly
 
-![Screenshot 11](screenshots/s10.png)
+![Screenshot 11](results/s10.png)
 
 *The supervisor terminal shows the complete container lifecycle log — all five containers started (alpha through beta), then `[supervisor] Shutting down...` followed by `[supervisor] Exited cleanly.` This confirms orderly shutdown: the supervisor stopped all running containers, joined all logging threads, closed the UNIX socket, and released the monitor file descriptor before exiting.*
 
@@ -229,7 +233,7 @@ make clean
 
 ### Screenshot 12 — Kernel module unloaded
 
-![Screenshot 12](screenshots/s11.png)
+![Screenshot 12](results/end.png)
 
 *`sudo rmmod monitor` unloads the kernel module. The `dmesg | tail -5` output shows `[container_monitor] Module unloaded.` confirming TODO 6 (free all list entries on exit) executed correctly with no kernel warnings or memory leaks reported. The module unloaded cleanly with all kernel data structures freed.*
 
