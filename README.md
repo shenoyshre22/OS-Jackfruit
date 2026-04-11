@@ -209,7 +209,7 @@ make clean
 
 ![Screenshot 9](results/s8.png)
 
-![Screenshot 9b — PIDs](resultss8_pid.png)
+![Screenshot 9b — PIDs](results/s8_pid.png)
 
 *Two cpu_hog containers (alpha4 and beta) were started simultaneously with equal memory limits. The `top` output shows the CPU distribution across all processes. The renice errors confirm the containers had already exited by the time renice was attempted — cpu_hog completes in 10 seconds. The `top` snapshot shows system CPU utilisation during the experiment period. Both containers ran under the CFS scheduler; with equal nice values they received approximately equal CPU shares, as shown by the near-zero idle percentage during their execution window.*
 
